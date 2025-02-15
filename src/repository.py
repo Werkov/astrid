@@ -2,7 +2,7 @@ from flask import session
 from logger import Logger
 import time
 from datetime import datetime
-from threading import Thread, Lock
+from threading import Thread
 from git import Repo, Git, GitCommandError
 import os
 import subprocess
@@ -55,8 +55,8 @@ class Repository:
         self.repodir = repodir
         self.config = repoConfig
 
-        self.runningLock = Lock()
-        self.waitingLock = Lock()
+        self.runningLock = GlobalLock(f'{name}.run')
+        self.waitingLock = GlobalLock(f'{name}.wait')
         self.logger = Logger(name)
 
         # validate config
