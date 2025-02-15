@@ -6,8 +6,48 @@ from threading import Thread, Lock
 from git import Repo, Git, GitCommandError
 import os
 import subprocess
+from pathlib import Path
+import fcntl
+import errno
 
 from auth import isLoggedIn
+
+class GlobalLock:
+    def __init__(self, name: str, robust: bool=True):
+        lockfile = Path(f'/run/astrid/locks/{name}')
+        lockfile.parent.mkdir(exists_ok=True, parents=True)
+        self.fd = open(lockfile, 'r')
+        self.robust = robust
+        self.local_locked = False
+
+    def __del__(self):
+        if self.local_locked and self.robust:
+            # If python crashes w/out proper __del__, even robust lock remains locked :-/
+            self.release()
+        self.fd.close()
+
+    def locked(self) -> bool:
+        if self.local_locked:
+            return True
+        elif self.acquire(blocking=False):
+            self.release()
+            return True
+        else:
+            return False
+
+    def acquire(self, blocking: bool=True) -> bool:
+        nb = fnctl.LOCK_NB if not blocking else 0
+        try:
+            fcntl.lockf(self.fd, fcntl.LOCK_EX | nb)
+            self.local_locked = True
+        except OSError as e:
+            if e.errno == errno.EACCESS or e.errno == errno.EAGAIN:
+                self.local_locked = False
+            raise
+        return self.local_locked
+
+    def release(self):
+        fcntl.lockf(self.fd, fcntl.LOCK_UN)
 
 class Repository:
     def __init__(self, name: str, repodir: str, repoConfig: dict):
